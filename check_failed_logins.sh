@@ -1,6 +1,6 @@
 #!/bin/sh
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# Check Failed Logins in RedHat Plugin
+# Check Failed Logins Plugin for AIX
 #
 # Version: 1.0
 # Author: DEMR
@@ -11,10 +11,10 @@
 #   ./check_failed_logins.sh -w <WLEVEL> -c <CLEVEL>
 #
 # SETUP (with NRPE, with other plugin should be a similar process):
-# 1.- Copy the plugin to the RedHat server you want to monitor.
-#   /usr/lib64/nagios/plugins/check_failed_logins_rh.sh
+# 1.- Copy the plugin to the AIX server you want to monitor.
+#   /opt/nagios/libexec/check_failed_logins_rh.sh
 # 2.- Define an entry in nrpe.cfg:
-#   command[check_failed_logins]=/usr/lib64/nagios/plugins/check_failed_logins_rh.sh -w 5 -c 10 2>&1
+#   command[check_failed_logins]=/opt/nagios/libexec/check_failed_logins_rh.sh -w 5 -c 10 2>&1
 # 3.- Restart NRPE service.
 # 4.- Create a service check in nagios using NRPE.
 #
@@ -103,15 +103,14 @@ fi
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Check failed logins
 #
-DATE=`date -d '1 hour ago' "+%b %d"`
-#HOUR_AGO=`TZ=GMT+4 date "+%H:%M:%S"`
-HOUR_AGO=`date -d '1 hour ago' "+%H:%M:%S"`
-HAS_FAILED_LAST_HOUR=`grep "$DATE" /var/log/secure|grep "Failed password"|awk -v h="$HOUR_AGO" 'BEGIN{c = 0;}{if($3 > h) c = c + 1;}END{print c;}'`
+HAS_FAILED_LAST_HOUR=`find /etc/security/failedlogin -mmin -60|wc -l`
 if [ $HAS_FAILED_LAST_HOUR -eq 0 ]; then
 	FINAL_STATUS="OK - No failed logins in last hour|failed=0"
 	RETURN_STATUS=$STATE_OK
 else
-	RECENT_ATTEMPTS=`grep "$DATE" /var/log/secure|grep "Failed password"|awk -v h="$HOUR_AGO" '{if($3 > h) for(i=1;i<=NF;i++) if($i == "from") print $(i+1);}'|cut -d "=" -f 2|uniq -c|head -1`
+	DATE=`date "+%b %d"`
+	HOUR_AGO=`TZ=GMT+4 date "+%H:%M"`
+	RECENT_ATTEMPTS=`who /etc/security/failedlogin|tail -r -20|grep "$DATE"|awk -v h="$HOUR_AGO" '{if($5 > h) print $6;}'|uniq -c|head -1`
 	N_ATTEMPTS=`echo "$RECENT_ATTEMPTS"|awk '{print $1;}'`
 	HOST_ATTEMPTING=`echo "$RECENT_ATTEMPTS"|awk '{print $2;}'|sed "s/[()]//g"`
 	if [ $N_ATTEMPTS -ge $CVALUE ]; then
@@ -124,11 +123,9 @@ else
 		FINAL_STATUS="OK - $N_ATTEMPTS failed login attempts from $HOST_ATTEMPTING|failed=$N_ATTEMPTS"
 		RETURN_STATUS=$STATE_OK
 	fi
+
 fi
 
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# Return final status and exit code
-#
 echo $FINAL_STATUS
 exit $RETURN_STATUS
 
